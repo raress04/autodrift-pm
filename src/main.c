@@ -65,7 +65,7 @@ int main(void)
                     g_drift_state = 2U;
                     g_drift_ticks = 0U;
                     current_cmd = 'Q';
-                    current_speed = 224U; /* High speed for initiation */
+                    current_speed = 252U; /* Max speed for drift */
                     drift_set_base_speed(current_speed);
                     drift_set_target(-60.0f);
                     drift_enable();
