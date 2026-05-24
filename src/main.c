@@ -27,6 +27,9 @@ static char    current_cmd   = 'S';
 static uint8_t current_speed = 150U;
 static float   current_yaw   = 0.0f;
 
+static uint8_t  g_drift_state = 0U; /* 0=IDLE, 1=ACCEL, 2=DRIFT */
+static uint16_t g_drift_ticks = 0U;
+
 static void handle_command(char cmd);
 static void print_status(void);
 static void uart_print_float(float f, uint8_t decimals);
@@ -44,7 +47,7 @@ int main(void)
     drift_init();
     sei();
 
-    uart_puts("READY. F/B/L/R/Q/E/D/S 0-9\r\n");
+    uart_puts("READY. F/B/L/R/Q/E/D/S/G 0-9\r\n");
 
     uint8_t status_tick = 0;
 
@@ -52,6 +55,32 @@ int main(void)
         if (uart_available()) {
             char c = uart_getchar();
             if (c != '\r' && c != '\n') handle_command(c);
+        }
+
+        if (g_drift_state != 0U) {
+            g_drift_ticks++;
+            if (g_drift_state == 1U) {
+                /* Phase 1: Acceleration - wait 1.2s (60 ticks * 20ms) */
+                if (g_drift_ticks >= 60U) {
+                    g_drift_state = 2U;
+                    g_drift_ticks = 0U;
+                    current_cmd = 'Q';
+                    current_speed = 224U; /* High speed for initiation */
+                    drift_set_base_speed(current_speed);
+                    drift_set_target(-60.0f);
+                    drift_enable();
+                    motors_drift_left(current_speed);
+                }
+            } else if (g_drift_state == 2U) {
+                /* Phase 2: Active Drift Left - drift for 1.6s (80 ticks * 20ms) */
+                if (g_drift_ticks >= 80U) {
+                    g_drift_state = 0U;
+                    g_drift_ticks = 0U;
+                    current_cmd = 'S';
+                    motors_stop();
+                    drift_disable();
+                }
+            }
         }
 
         drift_update();
@@ -106,6 +135,20 @@ static void print_status(void)
 
 static void handle_command(char cmd)
 {
+    if (cmd == 'G' || cmd == 'g') {
+        g_drift_state = 1U;
+        g_drift_ticks = 0U;
+        current_cmd = 'G';
+        current_speed = 252U; /* Max speed for acceleration */
+        drift_set_base_speed(current_speed);
+        drift_set_target(0.0f);
+        drift_disable();
+        motors_forward(current_speed);
+        return;
+    } else {
+        g_drift_state = 0U; /* Cancel automatic sequence */
+    }
+
     current_cmd = cmd;
 
     switch (cmd) {
